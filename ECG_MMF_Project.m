@@ -1,325 +1,356 @@
-%% First Part: 
-% -------------------------------------------------------------- %
-% ECG signal simulated by ECGwaveGen function from PhysioNet.org %
-% -------------------------------------------------------------- %
-bpm = 72; 
-sample_frquency = 200; % Hz
-time_interval = 10; % seconds
-amplitude = 1000; % mV
+%% Load Dataset and apply butterworth filter on it
+clc; % Clear the command window.
+close all; % Close all figures (except those of imtool.)
+clear; % Erase all existing variables.
+workspace;  % Make sure the workspace panel is showing.
+format long g;
+format compact;
+fontSize = 15;
+markerSize = 8;
+% load all the data 
+G = 200; % Gain
+Fs = 360; % [Hz]
+L = 3600; % lenght of ECG signals
+T = linspace(0,L/Fs,L); % time axis
+F = linspace(-Fs/2, Fs/2, L); % Frequency axis
+files = dir(fullfile("dataset/","*.mat")); % all dataset files
+numData = numel(files); % number of data
+ECGs = zeros(numData,L); % prealloc
+% load and store data
+for i = 1:numData
+    load(fullfile("dataset/",files(i).name)); % load all data
+    ECGs(i,:) = val/G;
+end
+% Plot the signal/s you want
+figure(1); plot(T, ECGs(1,:)); grid on;
+title("ECG Signal","FontSize",fontSize); 
+xlabel("Time (sec)", "FontSize", fontSize); 
+ylabel("voltage [mV]", "FontSize", fontSize);
+% Define a Butterworth Filter
+[b,a] = butter(3,[1 30]/(Fs/2),"bandpass"); 
+FLT_ECGs = zeros(numData,L); % prealloc 
+% filter all signals
+for i = 1:numData
+    FLT_ECGs(i,:) = filtfilt(b,a,ECGs(i,:)); 
+end
+% Plot the Filterd signals you want
+figure(2); plot(T, FLT_ECGs(1,:)); grid on;
+title("Clean ECG signal","FontSize",fontSize); 
+xlabel("Time (sec)", "FontSize", fontSize); 
+ylabel("voltage [mV]", "FontSize", fontSize);
+clear a b files val;
 
-sim_ecg = ECGwaveGen(bpm,time_interval, sample_frquency, amplitude);
+%% Add random generated Noise to all the signals 
+close all;
+% Prealloc 
+NS_ECGs = zeros(numData, L); 
+SNR = zeros(1,numData); 
+% Add noise to all signals
+for i = 1:numData
+    % generate random snr for all signals
+    SNR(i) = 1 +  (10 - 1).*rand(1);
+    % additive white gaussian noise
+    NS_ECGs(i,:) = awgn(FLT_ECGs(i,:),SNR(i),'measured');
+end
+% Plot the Noisy Signal of the signals
+figure(1); plot(T, NS_ECGs(1,:), "b-"); grid on;
+title("Noisy ECG Signal", "FontSize", fontSize);  
+xlabel("Time (sec)", "FontSize", fontSize); 
+ylabel("Voltage (Hz)", "FontSize", fontSize);
+clear SNR;
 
-l = length(sim_ecg);
-i = (0 : l - 1) / sample_frquency;
-plot(i, sim_ecg);
-title('Simulated ECG signal');
-xlabel ('time [sec]');
-ylabel ('voltage [mV]');
-grid on
+%% Add random generated Baseline drift to all signals
+close all;
+% prealloc
+DFT_ECGs = zeros(numData,L);
+% Call funtion to generate drift
+drift = GenDrift(numData,L);
+% Apply drift to all signals
+for i = 1:numData
+    DFT_ECGs(i,:) = NS_ECGs(i,:) + drift(i,:);
+end
+% Plot the Filterd signal/s you want
+figure(1); plot(T, DFT_ECGs(1,:), "b-"); grid on;
+title("Drifted ECG signal", "FontSize", fontSize); 
+xlabel("Time (sec)", "FontSize", fontSize);  
+ylabel("Voltage (Hz)", "FontSize", fontSize);
+clear drift;
 
-%% Add Noise to the Simulated ECG signal
-noisy_sig = awgn(sim_ecg, 20, 'measured');
-plot(i, noisy_sig, 'b');
-grid on
-xlabel('time [sec]');
-ylabel('voltage [mV]');
-title('Simulated ECG signal with added noise');
+%% Baseline correction
+close all;
+% Defining the two structuring element
+Bo = ones(1,0.2*Fs+1); % Bo = strel('line',0.2*Fs,0);
+Bc = ones(1,round(1.5*0.2*Fs+1)); % Bc = strel('line',1.5*0.2*Fs,0);
+% Prealloc
+peaksSuppression = zeros(numData,L);
+pitsSuppression = zeros(numData,L);
+detectedDrift = zeros(numData,L);
+Correction = zeros(numData,L);
+finalBaseline = zeros(numData,L);
+% Opening and Closing application to all signals
+for i=1:numData
+    % Opening: erosion B dilatation B
+    peaksSuppression(i,:) = opening(DFT_ECGs(i,:), Bo); % peaksSuppression(i,:) = imopen(DFT_ECGs(i,:), Bo);
+    % closing: dilatation B erosion B
+    pitsSuppression(i,:) = closing(DFT_ECGs(i,:), Bc); % pitsSuppression(i,:) = imclose(DFT_ECGs(i,:), Bo);
+end
+% Plot the representation of Op. and Cls. operation 
+figure(1); subplot(2,1,1); hold on;
+plot(T, peaksSuppression(1,:),"g-","LineWidth",3);
+plot(T, DFT_ECGs(1,:), "b-","LineWidth",0.5);
+title("Opening operation", "FontSize", fontSize); 
+xlabel("Time (sec)", "FontSize", fontSize);  
+ylabel("Voltage (Hz)", "FontSize", fontSize);
+legend("Opening","Signal");
+grid on; hold off;
+subplot(2,1,2); hold on;
+plot(T, pitsSuppression(1,:),"g-","LineWidth",3);
+plot(T, DFT_ECGs(1,:), "b-","LineWidth",0.5);
+title("Closing operation", "FontSize", fontSize); 
+xlabel("Time (sec)", "FontSize", fontSize);  
+ylabel("Voltage (Hz)", "FontSize", fontSize);
+legend("Closing","Signal");
+grid on; hold off;
+% Detection and Correction of the Wandering Baseline 
+% Apply Op. and Cls. to detect the drift
+for i=1:numData
+    peaksSuppression(i,:) = opening(DFT_ECGs(i,:), Bo); % peaksSuppression(i,:) = imopen(DFT_ECGs(i,:), Bo);
+    pitsSuppression(i,:) = closing(peaksSuppression(i,:), Bc); % pitsSuppression(i,:) = imclose(peaksSuppression(i,:), Bc);
+    % Detected drift of all sinals
+    detectedDrift(i,:) = pitsSuppression(i,:);
+end
+% Correction subtracting the drift from signals
+for i=1:numData
+    % Signal With Baseline drift corrected
+    Correction(i,:) = DFT_ECGs(i,:) - detectedDrift(i,:);
+    % Finale Baseline result
+    finalBaseline(i,:) = closing(opening(Correction(i,:),Bo),Bc); % finalBaseline(i,:) = imclose(imopen(Correction(i,:), Bo),Bc);
+end
+% Plot Corrected Signal and Baseline
+figure(2); subplot(2,1,1); hold on;
+plot(T, detectedDrift(1,:),"g-","LineWidth",3);
+plot(T, DFT_ECGs(1,:), "b-","LineWidth",0.5);
+title("Detected Baseline Drift", "FontSize", fontSize); 
+xlabel("Time (sec)", "FontSize", fontSize);  
+ylabel("Voltage (Hz)", "FontSize", fontSize);
+legend("Baseline","Signal");
+grid on; hold off;
+subplot(2,1,2); hold on;
+plot(T, finalBaseline(1,:),"g-","LineWidth",3);
+plot(T, Correction(1,:), "b-","LineWidth",0.5);
+title("Drift Correction", "FontSize", fontSize); 
+xlabel("Time (sec)", "FontSize", fontSize);  
+ylabel("Voltage (Hz)", "FontSize", fontSize);
+legend("Baseline","Signal");
+grid on; hold off;
 
-%% Add Baseline drift to the Simulated ECG signal
-x = linspace(0, 2*pi, l);
-A = 0.8;
-N = 60;
-cos_drift = A * cos(x ./ N);
-minDriftOffset = 0; 
-maxDriftOffset = 120;
-add_drift = cos_drift + linspace(minDriftOffset, maxDriftOffset, length(noisy_sig));
-subplot(2,1,1)
-plot(i, noisy_sig);
-xlabel('time [sec]');
-ylabel('voltage [mV]');
-title("Noisy ECG Signal");
-grid on
-grid minor
-subplot(2,1,2)
-dirty_sig = noisy_sig + add_drift; % Corrupted ECG Signal %
-plot(i, dirty_sig)
-xlabel('time [sec]');
-ylabel('voltage [mV]');
-title("Corrupted Simulated ECG Signal (Noise + Baseline Drift)");
-grid on
-grid minor
+%% Noise Suppression with MMF Algorithm
+close all;
+% Prealloc
+dilatation_1 = zeros(numData,L);
+erosion_1 = zeros(numData,L);
+dilatation_2 = zeros(numData,L);
+erosion_2 = zeros(numData,L);
+MMF_denoise = zeros(numData,L);
+% Defining the two structuring element
+B1 = [0 1 5 1 0]; B2 = [1 1 1 1 1];
+% Apply the Algorithm for all signals
+% 1/2*((Fbc dilatation B1 erosion B2) + (Fbc erosion B1 dilatation B2))
+for i = 1:numData
+    dilatation_1(i,:) = dilatation(Correction(i,:), B1); % dilatation
+    erosion_1(i,:) = erosion(dilatation_1(i,:), B2); % erosion
+    erosion_2(i,:) = erosion(Correction(i,:), B1); % erosion
+    dilatation_2(i,:) = dilatation(erosion_2(i,:), B2); % dilatation
+    MMF_denoise(i,:) = (erosion_1(i,:) + dilatation_2(i,:))/2; % average
+end
+% Plot denoised signal with MMF algorithm
+figure(1); plot(T, MMF_denoise(1,:), "b-"); grid on;
+title("MMF Denoised Ecg signal", "FontSize", fontSize);  
+xlabel("Time (sec)", "FontSize", fontSize); 
+ylabel("Voltage (Hz)", "FontSize", fontSize);
+clear dilatation_1 dilatation_2 erosion_1 erosion_2;
 
-%% Baseline Correction on Simulated ECG
-% Bo = ones(1, 0.2*fs); % = 0.2*Fs (fs = 360 Hz) %
-% Bc = ones(1, 1.5*0.2*fs); % = 1.5*o %
+%% Noise Suppressione with MF Algorithm
+% Prealloc
+MF_op_cl = zeros(numData,L);
+MF_cl_op = zeros(numData,L);
+MF_denoise = zeros(numData,L);
+% Defining the structuring element
+B = [0 1 5 1 0];
+% Apply the Algorithm for all signals
+% 1/2*((Fbc opening B closing B) + (Fbc closing B opening B))
+for i = 1:numData
+    % op. and cl.
+    MF_op_cl(i,:) = closing(opening(Correction(i,:),B),B); 
+    % cl. and op.
+    MF_cl_op(i,:) = opening(closing(Correction(i,:),B),B); 
+    % average
+    MF_denoise(i,:) = (MF_op_cl(i,:) + MF_cl_op(i,:))/2; 
+end
+% Plot denoised signal with Chu's MF algorithm
+figure(2); plot(T, MF_denoise(1,:), "b-"); grid on;
+title("CHU's MF Denoised Ecg signal", "FontSize", fontSize);  
+xlabel("Time (sec)", "FontSize", fontSize); 
+ylabel("Voltage (Hz)", "FontSize", fontSize);
+clear MF_op_cl MF_cl_op;
 
-bo = strel('line', 0.2*sample_frquency, 0);
-bc = strel('line', 1.5*0.2*sample_frquency, 0);
+%% Evaluation of the algorithms
+close all;
+% Prealloc
+MMF_NSR = zeros(1,numData);
+MF_NSR = zeros(1,numData);
+MMF_SDR = zeros(1,numData);
+MF_SDR = zeros(1,numData);
+% Compute NSR and SDR of the two method
+for i = 1:numData
+    % NSR (Noise Suppression Ratio) bigger the better
+    MMF_NSR(i) = sum(abs(fft(MMF_denoise(i,:))))/sum(abs(fft(FLT_ECGs(i,:)))); % MMF's NSR of all signals
+    MF_NSR(i) = sum(abs(fft(MF_denoise(i,:))))/sum(abs(fft(FLT_ECGs(i,:)))); % MF's NSR of all signals
+    % SDR (Signal Distortion Ratio) smaller the better
+    MMF_SDR(i) = sum(abs(fft(FLT_ECGs(i,:) - MMF_denoise(i,:))))/sum(abs(fft(MMF_denoise(i,:)))); % MMF's SDR of all signal
+    MF_SDR(i) = sum(abs(fft(FLT_ECGs(i,:) - MF_denoise(i,:))))/sum(abs(fft(MF_denoise(i,:)))); % MF's SDR of all signal
+end
+% Graphical Representation of the NSR
+figure(1); hold on; grid on;
+plot(MF_NSR,'-^r','LineWidth',1,'MarkerSize',markerSize);
+plot(MMF_NSR,'-ob','LineWidth',1,'MarkerSize',markerSize);
+hold off; xticks(0:50);
+title("Comparison of NSRs", "FontSize", fontSize);
+xlabel("Signals", "FontSize", fontSize); 
+ylabel("NSR", "FontSize", fontSize);
+legend("Chu's MF Algorithm", "MMF Algorithm", "FontSize", fontSize);
 
-op = imopen(dirty_sig, bo); % suppress peaks %
-figure(1)
-subplot(2,1,1)
-hold on
-plot(i, op, 'g', 'LineWidth', 3)
-plot(i, dirty_sig, 'b', 'LineWidth', 0.5)
-xlabel('time [sec]');
-ylabel('voltatge [mV]');
-title('Opening operation');
-legend('Opening','ECG Signal');
-grid on
-hold off
+% Graphical Representation of the SDR
+figure(2); hold on; grid on;
+plot(MF_SDR,'-^r','LineWidth',1,'MarkerSize',markerSize);
+plot(MMF_SDR,'-ob','LineWidth',1,'MarkerSize',markerSize);
+hold off; xticks(0:50);
+title("comparison of SDRs", "FontSize", fontSize);
+xlabel("Signals", "FontSize", fontSize); 
+ylabel("SDR", "FontSize", fontSize);
+legend("Chu's MF Algorithm","MMF Algorithm", "FontSize", fontSize);
 
-cls = imclose(dirty_sig, bc); % suppress pits %
-%figure(2)
-subplot(2,1,2)
-hold on
-plot(i, cls, 'g', 'LineWidth', 3);
-plot(i, dirty_sig, 'b', 'LineWidth', 0.5)
-xlabel('time [sec]');
-ylabel('voltage [mV]');
-title('Closing operation');
-legend('Closing','ECG Signal');
-grid on
-hold off
+%% Evaluation changing the dimension of the structuring element
+close all;
+% Define the dim. of strel
+N = 100;
+% Prealloc
+S1 = cell(1,N); % strel one
+S2 = cell(1,N); % strel two
+dataset = cell(1,N); % dataset as cell array
+snr = zeros(1,N);
+% Generate Structuring Elements
+for i = 1:N
+    S1(i) = {GenStrel(i)}; % strel 1
+    S2(i) = {ones(1,length(S1{i}))}; % strel 2
+    dataset(i) = {FLT_ECGs};
+    snr(i) = 1 + (30 - 1).*rand(1); % define random snr
+end
+% Generate increasing noise
+snr = sort(snr,"descend");
+noisy_dataset = cell(1,N);
+% Add noise to dataset
+for i = 1:N
+    noisy_dataset(i) = {awgn(dataset{i},snr(i),'measured')};
+end
 
-detect_drift = imclose(op, bc); % Baseline drift detected %
-figure(2)
-subplot(2,1,1)
-hold on
-plot(i, detect_drift, 'g', 'LineWidth', 3)
-plot(i, dirty_sig, 'b', 'LineWidth', 0.5)
-xlabel('time [sec]');
-ylabel('voltage [mV]');
-title('Baseline Drift detected in the ECG');
-legend('Baseline drift', 'ECG signal');
-grid on
-hold off
+% Apply MMF algorithm with various strel length
+curr_mmf = zeros(numData,L);
+all_mmf = cell(1,N);
+dl_er = zeros(numData,L);
+er_dl = zeros(numData,L);
+for j=1:N
+    s1 = S1{j};
+    s2 = S2{j};
+    for i=1:numData  % Compute the Algorithm
+        dl_er(i,:) = erosion(dilatation(noisy_dataset{j}(i,:), s1), s2);
+        er_dl(i,:) = dilatation(erosion(noisy_dataset{j}(i,:), s1), s2);
+        curr_mmf(i,:) = (dl_er(i,:) + er_dl(i,:))/2;
+        all_mmf(j) = {curr_mmf}; 
+    end
+end
+clear curr_mmf dl_er er_dl; % clear no more necessary variable
 
-drift_correction = dirty_sig - detect_drift; % drift deleted %
-subplot(2,1,2)
-hold on
-final_op = imopen(drift_correction, bo);
-final_baseline = imclose(final_op, bc);
-plot(i, final_baseline, 'g', 'LineWidth', 3)
-plot(i, drift_correction, 'b', 'LineWidth', 0.5)
-grid on
-title('Baseline Corrected ECG Signal');
-xlabel('time [sec]');
-ylabel('voltage [mV]');
-title("ECG signal after Baseline drift correction");
-legend('Corrected Baseline', 'ECG signal');
-hold off
+% Prealloc
+curr_nsr = zeros(1,numData);
+all_mmf_nsr = cell(1,N);
+curr_sdr = zeros(1,numData);
+all_mmf_sdr = cell(1,N);
+% Compute NSRs and SDRs
+for j=1:N
+    current_dataset = all_mmf{j}; % select current dataset
+    for i=1:numData
+        % MMF NSR:
+        curr_nsr(i) = sum(abs(fft(current_dataset(i,:))))/sum(abs(fft(FLT_ECGs(i,:)))); % current dataset NSR values
+        all_mmf_nsr(j) = {curr_nsr}; % all values of NSRs per dataset defined as strel grows
+        % MMF SDR:
+        curr_sdr(i) = sum(abs(fft(FLT_ECGs(i,:)-current_dataset(i,:))))/sum(abs(fft(current_dataset(i,:))));
+        all_mmf_sdr(j) = {curr_sdr}; % nsr di tutti e 48 i messaggi, uno per ogni strel
+    end
+end
+clear current_dataset curr_nsr curr_sdr; % clear no more necessary variable
 
-%% MMF Algorithm: Noise Suppression 
-% f = 1/2 * (f_bc • B_pair + f_bc o B_pair)
-% f_bc: signal after baseline correction
-% B_pair = {B1, B2}
-b1 = [0 1 5 1 0]; % triangular shape
-b2 = [1 1 1 1 1]; % linear shape [1 1 1 1 1]
+% Prealloc
+op_cl = zeros(numData,L);
+cl_op = zeros(numData,L);
+curr_mf = zeros(numData,L);
+all_mf = cell(1,N);
+% Apply Chu's MF algorithm with various strel length
+for j=1:N
+    s1 = S1{j};
+    % Compute the MF Algorithm
+    for i=1:numData  
+        op_cl(i,:) = closing(opening(noisy_dataset{j}(i,:),s1),s1);
+        cl_op(i,:) = opening(closing(noisy_dataset{j}(i,:),s1),s1);
+        curr_mf(i,:) = (op_cl(i,:) + cl_op(i,:))/2;
+        all_mf(j) = {curr_mf}; 
+    end
+end
+clear curr_mf op_cl cl_op all_mmf s1 s2; % clear no more necessary variable
 
-% first addend: f_bc dilatation B1 erosion B2 %
-v_1 = imdilate(drift_correction, b1); % "expansion" %
-first_value = imerode(v_1, b2); % "shrinking" %
+% Prealloc
+curr_nsr = zeros(1,numData);
+all_mf_nsr = cell(1,N);
+curr_sdr = zeros(1,numData);
+all_mf_sdr = cell(1,N);
+% Compute NSRs and SDRs
+for j=1:N
+    current_dataset = all_mf{j}; % select current dataset
+    for i=1:numData
+        % MMF NSR:
+        curr_nsr(i) = sum(abs(fft(current_dataset(i,:))))/sum(abs(fft(FLT_ECGs(i,:)))); % current dataset NSR values
+        all_mf_nsr(j) = {curr_nsr}; % all values of NSRs per dataset defined as strel grows
+        % MMF SDR:
+        curr_sdr(i) = sum(abs(fft(FLT_ECGs(i,:)-current_dataset(i,:))))/sum(abs(fft(current_dataset(i,:))));
+        all_mf_sdr(j) = {curr_sdr}; % nsr di tutti e 48 i messaggi, uno per ogni strel
+    end
+end
+clear current_dataset curr_nsr curr_sdr all_mf; % clear no more necessary variable
 
-% Second addend: f_bc erosion B1 dilataion B2
-v_2 = imerode(drift_correction, b1); % "shrinking" %
-second_value = imdilate(v_2, b2); % "expansion" %
-
-denoise_signal = (first_value + second_value) / 2; 
-
-subplot(2,1,1)
-plot(i, denoise_signal, 'b');
-title("ECG signal conditioning with MMF algorithm");
-xlabel("time [sec]");
-ylabel("voltage [mV]");
-grid on
-grid minor
-
-%% CHU's MF Algorithm: Noise Suppression on Simulated ECG
-% Impulsive noise suppression is performed
-% by processing the data through a sequence
-% of opening and closing operations. 
-% The result from this step is the average 
-% of the two estimates. 
-% Only one structuring element (B) is used.
-
-% f = 1/2 * ((f_in o B • B) + (f_in • B o B))
-
-b = [0 1 5 1 0]; % triangular shape
-
-% first part: opening and closing 
-mf_op_1 = imopen(drift_correction, b);
-mf_cl_1 = imclose(mf_op_1, b);
-
-% second part: closing and opening
-mf_cl_2 = imclose(drift_correction, b);
-mf_op_2 = imopen(mf_cl_2, b);
-
-% average
-mf_noise_suppression = (mf_op_1 + mf_cl_2) / 2;
-
-subplot(2,1,2)
-plot(i, mf_noise_suppression);
-title("ECG signal conditioning with CHU's MF Algorithm");
-xlabel("time [sec]");
-ylabel("voltage [mV]");
-grid on
-grid minor
-
-%% Evalutation on Simulated ECG signal
-% BCR (Baseline Correction Ratio) bigger the better
-bcr_mmf = sum(abs(drift_correction)) / sum(abs(detect_drift));
-fprintf('> BCR = %f\n\n', bcr_mmf);
-
-% NSR (Noise Suppression Ratio) bigger the better
-nsr_mmf = sum(abs(denoise_signal)) / sum(abs(sim_ecg));
-fprintf('> NSR_MMF = %f | ', nsr_mmf);
-
-nsr_mf = sum(abs(mf_noise_suppression)) / sum(abs(sim_ecg));
-fprintf('NSR_MF = %f\n\n', nsr_mf);
-
-% SDR (Signal Distortion Ratio) smaller the better
-sdr_mmf = sum(abs(sim_ecg - denoise_signal)) / sum(abs(denoise_signal));
-fprintf('> SDR_MMF = %f | ', sdr_mmf);
-
-sdr_mf = sum(abs(sim_ecg - mf_noise_suppression)) / sum(abs(mf_noise_suppression));
-fprintf('SDR_MF = %f\n\n', sdr_mf);
-
-%% Second Part:
-% -------------------------------------------------------------- %
-% Real ECG signal recovered from PhysioNet.org database
-% Load and plot the original ECG signal
-% -------------------------------------------------------------- %
-load('100m.mat');
-original_signal = val(1,:);
-fs = 360; % Hz
-% T = 1/fs; 
-L = length(original_signal);
-t = (0 : L - 1) / fs;
-
-plot(t, original_signal);
-title('plot of the original ECG signal');
-xlabel ('time [sec]');
-ylabel ('voltage [mV]');
-grid on
-
-%% Baseline Correction 
-Bo = strel('line', 0.2*fs, 0);
-Bc = strel('line', 1.5*0.2*fs, 0);
-
-opening = imopen(original_signal, Bo); % suppress peaks %
-figure(1)
-subplot(2,1,1)
-hold on
-plot(t, opening, 'g', 'LineWidth', 3)
-plot(t, original_signal, 'b', 'LineWidth', 0.5)
-xlabel('time [sec]');
-ylabel('voltatge [mV]');
-title('Opening operation');
-legend('Opening','ECG Signal');
-grid on
-hold off
-
-closing = imclose(original_signal, Bc); % suppress pits %
-%figure(2)
-subplot(2,1,2)
-hold on
-plot(t, closing, 'g', 'LineWidth', 3);
-plot(t, original_signal, 'b', 'LineWidth', 0.5)
-xlabel('time [sec]');
-ylabel('voltage [mV]');
-title('Closing operation');
-legend('Closing','ECG Signal');
-grid on
-hold off
-
-correction = imclose(opening, Bc); % Baseline drift detected %
-figure(2)
-subplot(2,1,1)
-hold on
-plot(t, correction, 'g', 'LineWidth', 3)
-plot(t, original_signal, 'b', 'LineWidth', 0.5)
-xlabel('time [sec]');
-ylabel('voltage [mV]');
-title('Baseline Drift detected in the ECG');
-legend('Baseline drift', 'ECG signal');
-grid on
-hold off
-
-BaselineDrift_Correction = original_signal - correction; % drift deleted %
-subplot(2,1,2)
-hold on
-check_op = imopen(BaselineDrift_Correction, Bo);
-check_baseline = imclose(check_op, Bc);
-plot(t, check_baseline, 'g', 'LineWidth', 3)
-plot(t, BaselineDrift_Correction, 'b', 'LineWidth', 0.5)
-grid on
-title('Baseline Corrected ECG Signal');
-xlabel('time [sec]');
-ylabel('voltage [mV]');
-title("ECG signal after Baseline drift correction");
-legend('Corrected Baseline', 'ECG signal');
-hold off
-
-%% MMF Algorithm: Noise Suppression 
-B1 = [0 1 5 1 0]; % triangular shape
-B2 = [1 1 1 1 1]; % linear shape [1 1 1 1 1]
-
-% first addend: f_bc dilatation B1 erosion B2 %
-value_1 = imdilate(BaselineDrift_Correction, B1); % "expansion" %
-first_addend = imerode(value_1, B2); % "shrinking" %
-
-% Second addend: f_bc erosion B1 dilataion B2
-value_2 = imerode(BaselineDrift_Correction, B1); % "shrinking" %
-second_addend = imdilate(value_2, B2); % "expansion" %
-
-Denoise_signal = (first_addend + second_addend) / 2; 
-
-subplot(2,1,1)
-plot(t, Denoise_signal, 'b');
-title("ECG signal conditioning with MMF algorithm");
-xlabel("time [sec]");
-ylabel("voltage [mV]");
-grid on
-grid minor
-
-%% CHU's MF Algorithm: Noise Suppression 
-B = [0 1 5 1 0]; % triangular shape
-
-% first part: opening and closing 
-mf_opening_1 = imopen(BaselineDrift_Correction, B);
-mf_closing_1 = imclose(mf_opening_1, B);
-
-% second part: closing and opening
-mf_closing_2 = imclose(BaselineDrift_Correction, B);
-mf_opening_2 = imopen(mf_closing_2, B);
-
-% average
-mf_denoise = (mf_opening_1 + mf_closing_2) / 2;
-
-subplot(2,1,2)
-plot(t, mf_denoise);
-title("ECG signal conditioning with CHU's MF Algorithm");
-xlabel("time [sec]");
-ylabel("voltage [mV]");
-grid on
-grid minor
-
-%% Evalutation
-% BCR (Baseline Correction Ratio) bigger the better
-BCR_MMF = sum(abs(correction)) / sum(abs(BaselineDrift_Correction));
-fprintf('> BCR = %f\n\n', BCR_MMF);
-
-% NSR (Noise Suppression Ratio) bigger the better
-NSR_MMF = sum(abs(Denoise_signal)) / sum(abs(original_signal));
-fprintf('> NSR_MMF = %f | ', NSR_MMF);
-
-NSR_MF = sum(abs(mf_denoise)) / sum(abs(original_signal));
-fprintf('NSR_MF = %f\n\n', NSR_MF);
-
-% SDR (Signal Distortion Ratio) smaller the better
-SDR_MMF = sum(abs(original_signal - Denoise_signal)) / sum(abs(Denoise_signal));
-fprintf('> SDR_MMF = %f | ', SDR_MMF);
-
-SDR_MF = sum(abs(original_signal - mf_denoise)) / sum(abs(mf_denoise));
-fprintf('SDR_MF = %f\n\n', SDR_MF);
+% Defining mean of all mmf and mf result and confront it 
+mean_mmf_nsr = cellfun(@(x) mean(x, "all"), all_mmf_nsr);
+mean_mmf_sdr = cellfun(@(x) mean(x, "all"), all_mmf_sdr);
+mean_mf_nsr = cellfun(@(x) mean(x, "all"), all_mf_nsr);
+mean_mf_sdr = cellfun(@(x) mean(x, "all"), all_mf_sdr);
+% Evaluation
+% Graphical Representation of the NSR
+figure(1); hold on; grid on;
+plot(mean_mf_nsr,'-^r','LineWidth',1);
+plot(mean_mmf_nsr,'-ob','LineWidth',1);
+hold off;
+get(gca,'XTickLabel'); set(gca,'XTickLabel',(1:2:2*N-1));
+xticks(1:2*N-1);
+title("NSRs as Strel grows", "FontSize", fontSize);
+xlabel("strel growing", "FontSize", fontSize); 
+ylabel("NSR", "FontSize", fontSize);
+legend("Chu's MF Algorithm", "MMF Algorithm");
+% Graphical Representation of the SDR
+figure(2); hold on; grid on;
+plot(mean_mf_sdr,'-^r','LineWidth',1);
+plot(mean_mmf_sdr,'-ob','LineWidth',1);
+get(gca,'XTickLabel'); set(gca,'XTickLabel',(1:2:2*N-1));
+hold off; xticks(1:2*N-1);
+title("SDRs as Strel grows", "FontSize", fontSize);
+xlabel("strel growing", "FontSize", fontSize); 
+ylabel("SDR", "FontSize", fontSize);
+legend("Chu's MF Algorithm","MMF Algorithm");
