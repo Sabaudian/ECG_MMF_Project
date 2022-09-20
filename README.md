@@ -14,4 +14,4 @@ The functions '*erosion.m*', '*dilatation.m*', '*closing.m*' and '*opening.m*' a
 If you do not want to use the **Communication Toolbox** with the '*awgn*' (Add White Gaussian Noise) function, instead you can adopt the '*GenNoise*' function to generate noise.
 
 ## DOCUMENTATION ##
-The two pdf file are the paper used to elaborate the project.
+The two pdf file are the papers used to elaborate the project.
