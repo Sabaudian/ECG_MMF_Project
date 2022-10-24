@@ -4,7 +4,7 @@ ECG signal conditioning by morphological Filtering
 ## MATLAB (v.R2022a) Requirements ## 
 • **Communications Toolbox** 
 
-• **Image Processing Toolbox** (*if you want to use the buid-in functions like: imopen, imclose, imerode and imdilate to process the signal*) 
+• **Image Processing Toolbox** (*if you want to use the build-in functions like: imopen, imclose, imerode and imdilate to process the signal*) 
 
 ## INFO ##
 The directory '*dataset*' containing a series of ECG signals recovered from the physionet database (LINK: https://physionet.org/content/mitdb/1.0.0/)
