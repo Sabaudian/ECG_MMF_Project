@@ -2,9 +2,13 @@
 ECG signal conditioning by morphological Filtering
 
 ## MATLAB (v.R2022a) Requirements ## 
-• **Communications Toolbox** 
+- **Communications Toolbox** 
+- **Image Processing Toolbox** (*if you want to use the build-in functions like: imopen, imclose, imerode and imdilate to process the signal*)
 
-• **Image Processing Toolbox** (*if you want to use the build-in functions like: imopen, imclose, imerode and imdilate to process the signal*) 
+## STRUCTURE ##
+- **ECG_MMF**: main class of the project.
+- **Gen_Drift**, **Gen_Noise** and **Gen_Strel**: generation of structures and artifacts useful for the froject.
+- **erosion.m**, **dilatation.m**, **closing.m** and **opening.m**: definition of the morphological operators.
 
 ## INFO ##
 The directory '*dataset*' contains a series of ECG signals recovered from the physionet database (LINK: https://physionet.org/content/mitdb/1.0.0/)
