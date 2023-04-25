@@ -1,7 +1,7 @@
 function [output] = erosion(input,strel)
 % Erosion operation on a 1-D signal
 %   INPUT:
-%   insputSignal = the signal
+%   input = signal in input
 %   strel = structuring element in input
 
     % Get sizes
