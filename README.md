@@ -11,7 +11,7 @@ ECG signal conditioning by morphological Filtering
 - **erosion.m**, **dilatation.m**, **closing.m** and **opening.m**: definition of the morphological operators.
 
 ## INFO ##
-The directory '*dataset*' contains a series of ECG signals recovered from the physionet database (LINK: https://physionet.org/content/mitdb/1.0.0/)
+The directory '*dataset*' contains a series of ECG signals recovered from the [physionet database](https://physionet.org/content/mitdb/1.0.0/)
 
 The functions '*erosion.m*', '*dilatation.m*', '*closing.m*' and '*opening.m*' are used to process the signals. The functions '*GenDrift.m*', '*GenStrel.m*' are used to generate respectively a baseline drift in the signal and to generate a bunch of Structuring Element to operate on signals. 
 
