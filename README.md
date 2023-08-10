@@ -18,7 +18,7 @@ The functions '*erosion.m*', '*dilatation.m*', '*closing.m*' and '*opening.m*' a
 If you do not want to use the **Communication Toolbox** with the '*awgn*' (Add White Gaussian Noise) function, instead you can adopt the '*GenNoise*' function to generate noise.
 
 ## DOCUMENTATION ##
-To built this project I have used the following paper:
+To built this project I have used the following papers:
 - [ECG signal conditioning by morphological filtering](https://www.sciencedirect.com/science/article/abs/pii/S0010482502000343?via%3Dihub)
 - [Impulsive noise suppression and background normalization of electrocardiogram signals using morphological operators](https://www.sciencedirect.com/science/article/abs/pii/S0010482502000343?via%3Dihub)
 
