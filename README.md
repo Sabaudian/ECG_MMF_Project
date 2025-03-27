@@ -7,7 +7,7 @@ ECG signal conditioning by morphological Filtering
 
 ## STRUCTURE ##
 - **ECG_MMF.m**: main class of the project.
-- **Gen_Drift.m**, **Gen_Noise.m** and **Gen_Strel.m**: generation of structures and artifacts useful for the project.
+- **GenDrift.m**, **GenNoise.m** and **GenStrel.m**: generation of structures and artifacts useful for the project.
 - **erosion.m**, **dilatation.m**, **closing.m** and **opening.m**: definition of the morphological operators.
 
 ## INFO ##
