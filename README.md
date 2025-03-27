@@ -8,7 +8,7 @@ ECG signal conditioning by morphological Filtering
 ## STRUCTURE ##
 - **ECG_MMF.m**: main class of the project.
 - **GenDrift.m**, **GenNoise.m** and **GenStrel.m**: generation of structures and artifacts useful for the project.
-- **erosion.m**, **dilatation.m**, **closing.m** and **opening.m**: definition of the morphological operators.
+- **erosion.m**, **dilatation.m**, **closing.m** and **opening.m**: definition of the morphological processes.
 
 ## INFO ##
 The directory '*dataset*' contains a series of ECG signals recovered from the [physionet database](https://physionet.org/content/mitdb/1.0.0/)
